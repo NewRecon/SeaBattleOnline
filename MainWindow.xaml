@@ -5,7 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:SeaBattle"
         mc:Ignorable="d"
-        Title="MainWindow" Height="600" Width="800">
+        Title="SeaBattleOnline" Height="600" Width="800">
     <Grid x:Name="mainGrid">
         <Grid.RowDefinitions>
             <RowDefinition/>

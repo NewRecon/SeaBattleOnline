@@ -20,6 +20,7 @@ using System.Net.Http;
 using System.Windows.Markup;
 using System.Runtime.CompilerServices;
 using System.IO;
+using System.Threading;
 
 namespace SeaBattle
 {
@@ -42,17 +43,7 @@ namespace SeaBattle
         {
             InitializeComponent();
             createButtonField();
-
-            Button button = new Button();
-            Grid.SetRow(button, 1);
-            button.Content = "Ready";
-            button.Click += StartPlay;
-            button.HorizontalAlignment = HorizontalAlignment.Center;
-            button.VerticalAlignment = VerticalAlignment.Center;
-            mainGrid.Children.Add(button);
-
             ConnectToServer();
-            
         }
 
         void createButtonField()
@@ -74,13 +65,20 @@ namespace SeaBattle
                     p2Field.Children.Add(button2);
                 }
             }
+            Button button3 = new Button();
+            Grid.SetRow(button3, 1);
+            button3.Content = "Ready";
+            button3.Click += StartPlay;
+            button3.HorizontalAlignment = HorizontalAlignment.Center;
+            button3.VerticalAlignment = VerticalAlignment.Center;
+            mainGrid.Children.Add(button3);
         }
 
         void SetShips(object sender, RoutedEventArgs e)
         {
-            if (p1ShipCounter < 20)
+            var currentButton = sender as Button;
+            if (p1ShipCounter < 20 && p1Map[Grid.GetColumn(currentButton), Grid.GetRow(currentButton)] != 1)
             {
-                var currentButton = sender as Button;
                 p1Map[Grid.GetColumn(currentButton), Grid.GetRow(currentButton)] = 1;
                 p1ShipCounter++;
                 currentButton.Background = Brushes.Blue;
@@ -93,11 +91,9 @@ namespace SeaBattle
             if (p1ShipCounter == 20)
             {
                 (sender as Button).IsEnabled = false;
-                //MessageBox.Show("start");
                 turn = false;
                 SendData(turn);
-                Task.Run(() => RecieveData());
-
+                var task = Task.Run(() => RecieveData());
                 foreach (var button in p1Field.Children)
                 {
                     (button as Button).Click -= SetShips;
@@ -111,30 +107,90 @@ namespace SeaBattle
 
         void Shoot(object sender, RoutedEventArgs e)
         {
+            var currentButton = sender as Button;
             if (turn)
             {
-                //if (p1ShipCounter != 0 && p2ShipCounter != 0)
-                //{
-                    bool isHit = false;
-                    var currentButton = sender as Button;
+                if (p1ShipCounter != 0 && p2ShipCounter != 0)
+                {
                     if (p2Map[Grid.GetColumn(currentButton), Grid.GetRow(currentButton)] == 1)
                     {
                         currentButton.Background = Brushes.Red;
                         p2Map[Grid.GetColumn(currentButton), Grid.GetRow(currentButton)] = -1;
-                        isHit = true;
-                    } 
-
-                    else
+                        SendData(true);
+                    }
+                    else if (p2Map[Grid.GetColumn(currentButton), Grid.GetRow(currentButton)] == 0)
                     {
                         p2Map[Grid.GetColumn(currentButton), Grid.GetRow(currentButton)] = -2;
                         currentButton.Background = Brushes.Gray;
+                        SendData(false);
                     }
-                        
-                    SendData(isHit);
-                //}
-                //else
-                    //MessageBox.Show("потрачено");
+                }
+                else
+                {
+                    Dispatcher.Invoke(() =>
+                    {
+                        foreach (var button in p2Field.Children)
+                        {
+                            (button as Button).Click -= Shoot;
+                        }
+                        EndGame();
+                    });
+                    SendData(false);
+                }
             }
+        }
+
+        void EndGame()
+        {
+            TextBlock textBlock = new TextBlock();
+            textBlock.HorizontalAlignment = HorizontalAlignment.Center;
+            textBlock.VerticalAlignment = VerticalAlignment.Center;
+            textBlock.FontSize = 42;
+            textBlock.Background = Brushes.White;
+            Grid.SetColumn(textBlock, 1);
+            Grid.SetRow(textBlock, 0);
+            if (p1ShipCounter <= 0)
+                textBlock.Text = "Потрачено";
+            else
+                textBlock.Text = "Победа";
+            mainGrid.Children.Add(textBlock);
+            Button button = new Button();
+            Grid.SetRow(button, 1);
+            Grid.SetColumn(button, 1);
+            button.Content = "Restart";
+            button.Click += RestartGame;
+            button.HorizontalAlignment = HorizontalAlignment.Center;
+            button.VerticalAlignment = VerticalAlignment.Center;
+            mainGrid.Children.Add(button);
+        }
+
+        void RestartGame(object sender, RoutedEventArgs e)
+        {
+            Dispatcher.Invoke(() =>
+            {
+                p1Field.Children.Clear();
+                p2Field.Children.Clear();
+                p1Map = new int[10, 10];
+                p1ShipCounter = 0;
+                p2Map = new int[10, 10];
+                p2ShipCounter = 0;
+                turn = false;
+                JSON = "";
+                for (int i = 0; i < mainGrid.Children.Count; i++)
+                {
+                    if (mainGrid.Children[i] is Button)
+                    {
+                        mainGrid.Children.Remove(mainGrid.Children[i]);
+                        i--;
+                    }
+                    else if (mainGrid.Children[i] is TextBlock)
+                    {
+                        mainGrid.Children.Remove(mainGrid.Children[i]);
+                        i--;
+                    }
+                }
+            });
+            createButtonField();
         }
 
         void ConnectToServer()
@@ -188,7 +244,7 @@ namespace SeaBattle
             while (true)
             {
                 byte[] dataRecieve = new byte[1024];
-                int numberOfData = stream.Read(dataRecieve, 0, dataRecieve.Length);
+                stream.Read(dataRecieve, 0, dataRecieve.Length);
                 ParsedRecieveData(dataRecieve);
             }
         }
@@ -198,6 +254,7 @@ namespace SeaBattle
             string str = Encoding.UTF8.GetString(dataRecieve);
             str = str.Substring(0, str.LastIndexOf('}')+1);
             var parsedJson = JsonSerializer.Deserialize<SeaBattleJson>(str);
+
 
             if (JSON != str && parsedJson.turn == false)
             {
@@ -227,8 +284,10 @@ namespace SeaBattle
                                 {
                                     if (Grid.GetColumn(e as Button) == i && Grid.GetRow(e as Button) == j)
                                     {
+                                        p1Map[Grid.GetColumn(e as Button), Grid.GetRow(e as Button)] = -1;
                                         (e as Button).Content = "X";
                                         (e as Button).Background = Brushes.Red;
+                                        p1ShipCounter--;
                                     }
                                 }
                             }
@@ -238,6 +297,7 @@ namespace SeaBattle
                                 {
                                     if (Grid.GetColumn(e as Button) == i && Grid.GetRow(e as Button) == j)
                                     {
+                                        p1Map[Grid.GetColumn(e as Button), Grid.GetRow(e as Button)] = -2;
                                         (e as Button).Content = ".";
                                         (e as Button).Background = Brushes.Gray;
                                     }
