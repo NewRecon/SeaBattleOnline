@@ -34,9 +34,6 @@ namespace SeaBattle
         int p2ShipCounter;
         bool turn;
 
-        static List<Button> buttons1 = new List<Button>();
-        static List<Button> buttons2 = new List<Button>();
-
         string JSON;
 
         NetworkStream stream;
@@ -74,9 +71,7 @@ namespace SeaBattle
                     Grid.SetRow(button, j);
                     Grid.SetRow(button2, j);
                     p1Field.Children.Add(button);
-                    buttons1.Add(button);
                     p2Field.Children.Add(button2);
-                    buttons2.Add(button2);
                 }
             }
         }
@@ -120,17 +115,21 @@ namespace SeaBattle
             {
                 //if (p1ShipCounter != 0 && p2ShipCounter != 0)
                 //{
-                bool isHit = false;
+                    bool isHit = false;
                     var currentButton = sender as Button;
                     if (p2Map[Grid.GetColumn(currentButton), Grid.GetRow(currentButton)] == 1)
                     {
                         currentButton.Background = Brushes.Red;
-                    //p2Map[Grid.GetColumn(currentButton), Grid.GetRow(currentButton)] = -1;
-                    isHit = true;
+                        p2Map[Grid.GetColumn(currentButton), Grid.GetRow(currentButton)] = -1;
+                        isHit = true;
                     } 
 
                     else
+                    {
+                        p2Map[Grid.GetColumn(currentButton), Grid.GetRow(currentButton)] = -2;
                         currentButton.Background = Brushes.Gray;
+                    }
+                        
                     SendData(isHit);
                 //}
                 //else
@@ -158,14 +157,14 @@ namespace SeaBattle
             };
 
             json.p2Map = new int[100];
-            //json.p1Map = new int[100];
+            json.p1Map = new int[100];
 
             for (int i = 0, n = 0 , k=0; i < 10; i++)
             {
                 for (int j = 0; j < 10; j++)
                 {
-                    json.p2Map[n++] = p1Map[i,j];
-                    //json.p1Map[k++] = p2Map[i, j];
+                    json.p2Map[n++] = p1Map[i, j];
+                    json.p1Map[k++] = p2Map[i, j];
                 }
             }
 
@@ -177,8 +176,6 @@ namespace SeaBattle
             var send = JsonSerializer.Serialize(json);
 
             JSON = send;
-
-            
 
             //File.WriteAllText(@"C:\Users\99max\Desktop\Новый текстовый документ (2).txt", send);
 
@@ -193,7 +190,6 @@ namespace SeaBattle
                 byte[] dataRecieve = new byte[1024];
                 int numberOfData = stream.Read(dataRecieve, 0, dataRecieve.Length);
                 ParsedRecieveData(dataRecieve);
-                //MessageBox.Show("игрок походил");
             }
         }
 
@@ -206,35 +202,57 @@ namespace SeaBattle
             if (JSON != str && parsedJson.turn == false)
             {
                 turn = true;
-                
+
+                int[,] bufMap = new int[10, 10];
+
                 for (int i = 0, n = 0, k=0; i < 10; i++)
                 {
                     for (int j = 0; j < 10; j++)
                     {
                         p2Map[i, j] = parsedJson.p2Map[n++];
-                        //p1Map[i,j] = parsedJson.p1Map[k++];
-                        //if (p1Map[i, j] == -1)
-                        //{
-                        //    foreach (var e in p1Field.Children)
-                        //    {
-                        //        if (Grid.GetColumn(e as Button) == i && Grid.GetRow(e as Button) == j)
-                        //        {
-                        //            (e as Button).Content = "X";
-                        //            (e as Button).Background = Brushes.Gray;
-                        //        }
-                        //    }
-                        //}
+                        bufMap[i, j] = parsedJson.p1Map[k++];
                     }
                 }
                 p2ShipCounter = parsedJson.p2ShipCounter;
-                //MessageBox.Show("Ваша очередь");
+
+                Dispatcher.Invoke(() =>
+                {
+                    for (int i = 0; i < 10; i++)
+                    {
+                        for (int j = 0; j < 10; j++)
+                        {
+                            if (bufMap[i, j] == -1)
+                            {
+                                foreach (var e in p1Field.Children)
+                                {
+                                    if (Grid.GetColumn(e as Button) == i && Grid.GetRow(e as Button) == j)
+                                    {
+                                        (e as Button).Content = "X";
+                                        (e as Button).Background = Brushes.Red;
+                                    }
+                                }
+                            }
+                            else if (bufMap[i, j] == -2)
+                            {
+                                foreach (var e in p1Field.Children)
+                                {
+                                    if (Grid.GetColumn(e as Button) == i && Grid.GetRow(e as Button) == j)
+                                    {
+                                        (e as Button).Content = ".";
+                                        (e as Button).Background = Brushes.Gray;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
             }
         }
     }
 
     class SeaBattleJson
     {
-        //public int[] p1Map { get; set; }
+        public int[] p1Map { get; set; }
         public int[] p2Map { get; set; }
         public int p2ShipCounter { get; set; }
         public bool turn { get; set; }
