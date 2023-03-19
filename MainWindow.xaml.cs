@@ -29,13 +29,15 @@ namespace SeaBattle
     /// </summary>
     public partial class MainWindow : Window
     {
-        int[,] p1Map = new int[10,10];
-        int p1ShipCounter;
-        int[,] p2Map = new int[10,10];
-        int p2ShipCounter;
-        bool turn;
+        static int[,] p1Map = new int[10,10];
+        static int p1ShipCounter;
+        static int[,] p2Map = new int[10,10];
+        static int p2ShipCounter;
+        static bool turn;
 
-        string JSON;
+        static bool isRestart = false;
+
+        static string JSON;
 
         NetworkStream stream;
 
@@ -68,6 +70,9 @@ namespace SeaBattle
             Button button3 = new Button();
             Grid.SetRow(button3, 1);
             button3.Content = "Ready";
+            button3.FontSize = 42;
+            button3.Width = 150;
+            button3.Height = 150;
             button3.Click += StartPlay;
             button3.HorizontalAlignment = HorizontalAlignment.Center;
             button3.VerticalAlignment = VerticalAlignment.Center;
@@ -87,13 +92,12 @@ namespace SeaBattle
 
         void StartPlay(object sender, RoutedEventArgs e)
         {
-            
             if (p1ShipCounter == 20)
             {
                 (sender as Button).IsEnabled = false;
                 turn = false;
-                SendData(turn);
-                var task = Task.Run(() => RecieveData());
+                var send = Task.Run(() => SendData(turn));
+                var recieve = Task.Run(() => RecieveData());
                 foreach (var button in p1Field.Children)
                 {
                     (button as Button).Click -= SetShips;
@@ -107,22 +111,24 @@ namespace SeaBattle
 
         void Shoot(object sender, RoutedEventArgs e)
         {
-            var currentButton = sender as Button;
             if (turn)
             {
+                var currentButton = sender as Button;
                 if (p1ShipCounter != 0 && p2ShipCounter != 0)
                 {
                     if (p2Map[Grid.GetColumn(currentButton), Grid.GetRow(currentButton)] == 1)
                     {
                         currentButton.Background = Brushes.Red;
                         p2Map[Grid.GetColumn(currentButton), Grid.GetRow(currentButton)] = -1;
-                        SendData(true);
+                        p2ShipCounter--;
+                        var send = Task.Run(() => SendData(true));
+                        
                     }
                     else if (p2Map[Grid.GetColumn(currentButton), Grid.GetRow(currentButton)] == 0)
                     {
                         p2Map[Grid.GetColumn(currentButton), Grid.GetRow(currentButton)] = -2;
                         currentButton.Background = Brushes.Gray;
-                        SendData(false);
+                        var send = Task.Run(() => SendData(false));
                     }
                 }
                 else
@@ -135,7 +141,7 @@ namespace SeaBattle
                         }
                         EndGame();
                     });
-                    SendData(false);
+                    var send = Task.Run(() => SendData(false));
                 }
             }
         }
@@ -159,6 +165,9 @@ namespace SeaBattle
             Grid.SetColumn(button, 1);
             button.Content = "Restart";
             button.Click += RestartGame;
+            button.FontSize = 42;
+            button.Width = 150;
+            button.Height = 150;
             button.HorizontalAlignment = HorizontalAlignment.Center;
             button.VerticalAlignment = VerticalAlignment.Center;
             mainGrid.Children.Add(button);
@@ -166,6 +175,7 @@ namespace SeaBattle
 
         void RestartGame(object sender, RoutedEventArgs e)
         {
+            isRestart = true;
             Dispatcher.Invoke(() =>
             {
                 p1Field.Children.Clear();
@@ -174,7 +184,6 @@ namespace SeaBattle
                 p1ShipCounter = 0;
                 p2Map = new int[10, 10];
                 p2ShipCounter = 0;
-                turn = false;
                 JSON = "";
                 for (int i = 0; i < mainGrid.Children.Count; i++)
                 {
@@ -207,10 +216,13 @@ namespace SeaBattle
 
         void SendData(bool isHit, [CallerMemberName] string prop = "")
         {
-            SeaBattleJson json = new SeaBattleJson()
-            {
-                p2ShipCounter = p1ShipCounter
-            };
+            SeaBattleJson json = new SeaBattleJson();
+
+            json.p2ShipCounter = p1ShipCounter;
+            if (prop == "Shoot" || isRestart)
+                json.p1ShipCounter = p2ShipCounter;
+            else
+                json.p1ShipCounter = 20;
 
             json.p2Map = new int[100];
             json.p1Map = new int[100];
@@ -252,25 +264,24 @@ namespace SeaBattle
         void ParsedRecieveData(byte[] dataRecieve)
         {
             string str = Encoding.UTF8.GetString(dataRecieve);
-            str = str.Substring(0, str.LastIndexOf('}')+1);
+            str = str.Substring(0, str.LastIndexOf('}') + 1);
             var parsedJson = JsonSerializer.Deserialize<SeaBattleJson>(str);
-
 
             if (JSON != str && parsedJson.turn == false)
             {
+                
                 turn = true;
 
                 int[,] bufMap = new int[10, 10];
 
                 for (int i = 0, n = 0, k=0; i < 10; i++)
                 {
-                    for (int j = 0; j < 10; j++)
+                    for (int j = 0;    j < 10; j++)
                     {
                         p2Map[i, j] = parsedJson.p2Map[n++];
                         bufMap[i, j] = parsedJson.p1Map[k++];
                     }
                 }
-                p2ShipCounter = parsedJson.p2ShipCounter;
 
                 Dispatcher.Invoke(() =>
                 {
@@ -278,7 +289,7 @@ namespace SeaBattle
                     {
                         for (int j = 0; j < 10; j++)
                         {
-                            if (bufMap[i, j] == -1)
+                            if (bufMap[i, j] == -1) 
                             {
                                 foreach (var e in p1Field.Children)
                                 {
@@ -287,7 +298,6 @@ namespace SeaBattle
                                         p1Map[Grid.GetColumn(e as Button), Grid.GetRow(e as Button)] = -1;
                                         (e as Button).Content = "X";
                                         (e as Button).Background = Brushes.Red;
-                                        p1ShipCounter--;
                                     }
                                 }
                             }
@@ -306,7 +316,10 @@ namespace SeaBattle
                         }
                     }
                 });
+                p1ShipCounter = parsedJson.p1ShipCounter;
+                p2ShipCounter = parsedJson.p2ShipCounter;
             }
+            JSON = str;
         }
     }
 
@@ -314,6 +327,7 @@ namespace SeaBattle
     {
         public int[] p1Map { get; set; }
         public int[] p2Map { get; set; }
+        public int p1ShipCounter { get; set; }
         public int p2ShipCounter { get; set; }
         public bool turn { get; set; }
     }
